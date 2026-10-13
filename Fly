@@ -1,0 +1,366 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local LP = Players.LocalPlayer
+
+local guiParent = gethui and gethui() or LP:WaitForChild("PlayerGui")
+
+local speedLvl = 1
+local SPEED_MUL = 50
+local MAX_LVL = 1000000
+
+local flying = false
+local attachment, lv, ao, flyConn
+local upHeld = false
+local downHeld = false
+local savedWalk = 16
+local savedJump = 50
+
+local mobileCtrls
+pcall(function()
+    local ps = LP:FindFirstChild("PlayerScripts")
+    if ps then
+        local pm = ps:FindFirstChild("PlayerModule")
+        if pm then
+            mobileCtrls = require(pm):GetControls()
+        end
+    end
+end)
+
+local oldGui = guiParent:FindFirstChild("EGY_FlyGui")
+if oldGui then
+    oldGui:Destroy()
+end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "EGY_FlyGui"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.Parent = guiParent
+
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0, 190, 0, 100)
+main.Position = UDim2.new(0, 20, 0, 120)
+main.BackgroundColor3 = Color3.fromRGB(200, 15, 15)
+main.BorderSizePixel = 0
+main.Active = true
+main.Draggable = true
+main.Parent = gui
+
+local mc1 = Instance.new("UICorner")
+mc1.CornerRadius = UDim.new(0, 7)
+mc1.Parent = main
+
+local BTN = Color3.fromRGB(230, 30, 30)
+local BTN_ON = Color3.fromRGB(60, 190, 60)
+local TXT = Color3.fromRGB(255, 255, 255)
+
+local function mkBtn(pos, size, text, tsize)
+    local b = Instance.new("TextButton")
+    b.Size = size
+    b.Position = pos
+    b.BackgroundColor3 = BTN
+    b.BorderSizePixel = 0
+    b.Text = text
+    b.TextColor3 = TXT
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = tsize or 15
+    b.Parent = main
+
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 4)
+    c.Parent = b
+    return b
+end
+
+local closeBtn = mkBtn(UDim2.new(0, 3, 0, 3), UDim2.new(0, 30, 0, 28), "✕", 15)
+local minBtn = mkBtn(UDim2.new(0, 36, 0, 3), UDim2.new(0, 30, 0, 28), "−", 20)
+
+local titleLbl = Instance.new("TextLabel")
+titleLbl.Size = UDim2.new(0, 121, 0, 28)
+titleLbl.Position = UDim2.new(0, 69, 0, 3)
+titleLbl.BackgroundColor3 = BTN
+titleLbl.BorderSizePixel = 0
+titleLbl.Text = "سكربت EGY"
+titleLbl.TextColor3 = TXT
+titleLbl.Font = Enum.Font.GothamBold
+titleLbl.TextSize = 14
+titleLbl.Parent = main
+
+local tc1 = Instance.new("UICorner")
+tc1.CornerRadius = UDim.new(0, 4)
+tc1.Parent = titleLbl
+
+local upBtn = mkBtn(UDim2.new(0, 3, 0, 34), UDim2.new(0, 30, 0, 28), "↑", 17)
+local plusBtn = mkBtn(UDim2.new(0, 36, 0, 34), UDim2.new(0, 30, 0, 28), "+", 17)
+
+local spdLbl = Instance.new("TextLabel")
+spdLbl.Size = UDim2.new(0, 50, 0, 28)
+spdLbl.Position = UDim2.new(0, 69, 0, 34)
+spdLbl.BackgroundColor3 = BTN
+spdLbl.BorderSizePixel = 0
+spdLbl.Text = tostring(speedLvl)
+spdLbl.TextColor3 = TXT
+spdLbl.Font = Enum.Font.GothamBold
+spdLbl.TextSize = 14
+spdLbl.TextScaled = true
+spdLbl.Parent = main
+
+local sc1 = Instance.new("UICorner")
+sc1.CornerRadius = UDim.new(0, 4)
+sc1.Parent = spdLbl
+
+local flyBtn = mkBtn(UDim2.new(0, 122, 0, 34), UDim2.new(0, 65, 0, 61), "Fly", 16)
+
+local downBtn = mkBtn(UDim2.new(0, 3, 0, 65), UDim2.new(0, 30, 0, 28), "↓", 17)
+local minusBtn = mkBtn(UDim2.new(0, 36, 0, 65), UDim2.new(0, 30, 0, 28), "−", 17)
+
+local mini = Instance.new("Frame")
+mini.Size = UDim2.new(0, 190, 0, 32)
+mini.Position = UDim2.new(0, 20, 0, 120)
+mini.BackgroundColor3 = Color3.fromRGB(200, 15, 15)
+mini.BorderSizePixel = 0
+mini.Visible = false
+mini.Active = true
+mini.Draggable = true
+mini.Parent = gui
+
+local mc2 = Instance.new("UICorner")
+mc2.CornerRadius = UDim.new(0, 7)
+mc2.Parent = mini
+
+local function mkMiniBtn(pos, text)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0, 30, 0, 28)
+    b.Position = pos
+    b.BackgroundColor3 = BTN
+    b.BorderSizePixel = 0
+    b.Text = text
+    b.TextColor3 = TXT
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 18
+    b.Parent = mini
+
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 4)
+    c.Parent = b
+    return b
+end
+
+local miniClose = mkMiniBtn(UDim2.new(0, 3, 0, 2), "✕")
+local miniOpen = mkMiniBtn(UDim2.new(0, 36, 0, 2), "+")
+
+local miniTitle = Instance.new("TextLabel")
+miniTitle.Size = UDim2.new(0, 121, 0, 28)
+miniTitle.Position = UDim2.new(0, 69, 0, 2)
+miniTitle.BackgroundColor3 = BTN
+miniTitle.BorderSizePixel = 0
+miniTitle.Text = "سكربت EGY"
+miniTitle.TextColor3 = TXT
+miniTitle.Font = Enum.Font.GothamBold
+miniTitle.TextSize = 14
+miniTitle.Parent = mini
+
+local mtc1 = Instance.new("UICorner")
+mtc1.CornerRadius = UDim.new(0, 4)
+mtc1.Parent = miniTitle
+
+local function refreshSpd()
+    spdLbl.Text = tostring(speedLvl)
+end
+
+local function shutdown()
+    if flyConn then flyConn:Disconnect() end
+    if attachment then attachment:Destroy() end
+    if lv then lv:Destroy() end
+    if ao then ao:Destroy() end
+    gui:Destroy()
+end
+
+closeBtn.MouseButton1Click:Connect(shutdown)
+miniClose.MouseButton1Click:Connect(shutdown)
+
+minBtn.MouseButton1Click:Connect(function()
+    mini.Position = main.Position
+    main.Visible = false
+    mini.Visible = true
+end)
+
+miniOpen.MouseButton1Click:Connect(function()
+    main.Position = mini.Position
+    mini.Visible = false
+    main.Visible = true
+end)
+
+upBtn.MouseButton1Down:Connect(function()
+    upHeld = true
+    upBtn.BackgroundColor3 = BTN_ON
+end)
+upBtn.MouseButton1Up:Connect(function()
+    upHeld = false
+    upBtn.BackgroundColor3 = BTN
+end)
+upBtn.MouseLeave:Connect(function()
+    upHeld = false
+    upBtn.BackgroundColor3 = BTN
+end)
+
+downBtn.MouseButton1Down:Connect(function()
+    downHeld = true
+    downBtn.BackgroundColor3 = BTN_ON
+end)
+downBtn.MouseButton1Up:Connect(function()
+    downHeld = false
+    downBtn.BackgroundColor3 = BTN
+end)
+downBtn.MouseLeave:Connect(function()
+    downHeld = false
+    downBtn.BackgroundColor3 = BTN
+end)
+
+local plusHold = false
+plusBtn.MouseButton1Down:Connect(function()
+    plusHold = true
+    speedLvl = math.min(MAX_LVL, speedLvl + 1)
+    refreshSpd()
+
+    task.spawn(function()
+        task.wait(0.5)
+        while plusHold and speedLvl < MAX_LVL do
+            speedLvl = speedLvl + 1
+            refreshSpd()
+            task.wait(0.05)
+        end
+    end)
+end)
+plusBtn.MouseButton1Up:Connect(function() plusHold = false end)
+plusBtn.MouseLeave:Connect(function() plusHold = false end)
+
+local minusHold = false
+minusBtn.MouseButton1Down:Connect(function()
+    minusHold = true
+    speedLvl = math.max(1, speedLvl - 1)
+    refreshSpd()
+
+    task.spawn(function()
+        task.wait(0.5)
+        while minusHold and speedLvl > 1 do
+            speedLvl = speedLvl - 1
+            refreshSpd()
+            task.wait(0.05)
+        end
+    end)
+end)
+minusBtn.MouseButton1Up:Connect(function() minusHold = false end)
+minusBtn.MouseLeave:Connect(function() minusHold = false end)
+
+local function startFly()
+    local char = LP.Character
+    if not char then return end
+
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return end
+
+    flying = true
+    savedWalk = hum.WalkSpeed
+    savedJump = hum.JumpPower
+    hum.WalkSpeed = 0
+    hum.JumpPower = 0
+
+    if attachment then attachment:Destroy() end
+    if lv then lv:Destroy() end
+    if ao then ao:Destroy() end
+
+    attachment = Instance.new("Attachment")
+    attachment.Name = "EGY_FlyAttachment"
+    attachment.Parent = hrp
+
+    lv = Instance.new("LinearVelocity")
+    lv.Attachment0 = attachment
+    lv.MaxForce = 9e9
+    lv.VectorVelocity = Vector3.zero
+    lv.RelativeTo = Enum.ActuatorRelativeTo.World
+    lv.Parent = hrp
+
+    ao = Instance.new("AlignOrientation")
+    ao.Attachment0 = attachment
+    ao.Mode = Enum.OrientationAlignmentMode.OneAttachment
+    ao.MaxTorque = 9e9
+    ao.Responsiveness = 200
+    ao.CFrame = workspace.CurrentCamera.CFrame
+    ao.Parent = hrp
+
+    if flyConn then flyConn:Disconnect() end
+
+    flyConn = RunService.RenderStepped:Connect(function()
+        if not flying or not lv or not ao or not hrp.Parent then return end
+
+        local cam = workspace.CurrentCamera
+        local camCF = cam.CFrame
+        local move = Vector3.zero
+
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + camCF.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - camCF.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - camCF.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + camCF.RightVector end
+
+        if mobileCtrls then
+            local ok, mv = pcall(function() return mobileCtrls:GetMoveVector() end)
+            if ok and mv.Magnitude > 0.05 then
+                move = move + camCF:VectorToWorldSpace(Vector3.new(mv.X, 0, mv.Z))
+            end
+        end
+
+        if upHeld then move = move + Vector3.new(0, 1, 0) end
+        if downHeld then move = move - Vector3.new(0, 1, 0) end
+
+        if move.Magnitude > 0 then
+            lv.VectorVelocity = move.Unit * (speedLvl * SPEED_MUL)
+        else
+            lv.VectorVelocity = Vector3.zero
+        end
+
+        ao.CFrame = camCF
+    end)
+end
+
+local function stopFly()
+    flying = false
+
+    if flyConn then flyConn:Disconnect() flyConn = nil end
+    if lv then lv:Destroy() lv = nil end
+    if ao then ao:Destroy() ao = nil end
+    if attachment then attachment:Destroy() attachment = nil end
+
+    local char = LP.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.WalkSpeed = savedWalk
+            hum.JumpPower = savedJump
+        end
+    end
+end
+
+flyBtn.MouseButton1Click:Connect(function()
+    if flying then
+        stopFly()
+        flyBtn.BackgroundColor3 = BTN
+        flyBtn.Text = "Fly"
+    else
+        startFly()
+        flyBtn.BackgroundColor3 = BTN_ON
+        flyBtn.Text = "Stop"
+    end
+end)
+
+LP.CharacterAdded:Connect(function()
+    if flying then stopFly() end
+    flyBtn.BackgroundColor3 = BTN
+    flyBtn.Text = "Fly"
+    upHeld = false
+    downHeld = false
+    upBtn.BackgroundColor3 = BTN
+    downBtn.BackgroundColor3 = BTN
+end)
